@@ -17,7 +17,7 @@ The output is one HTML file. Open it locally or put it on any static host.
 ## Quick start
 
 ```bash
-git clone <this repo>
+git clone https://github.com/poseljacob/x-network-map.git
 cd x-network-map
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 # put config.json, interactions.json, profiles.json, seeds.json (and optionally impressions_30d.json) in data/
