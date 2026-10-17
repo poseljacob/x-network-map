@@ -1,0 +1,540 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>X network map</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+<style>
+  :root {
+    --bg: #f5f3ee; --card: #fffefb; --ink: #1f2328; --muted: #6b7280; --line: #e7e3da;
+    --accent: #4f46e5; --shadow: 0 1px 2px rgba(31,35,40,.06), 0 8px 24px rgba(31,35,40,.08);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font-family: Inter, system-ui, sans-serif; overflow: hidden; }
+  canvas { position: fixed; inset: 0; cursor: grab; }
+  canvas.dragging { cursor: grabbing; } canvas.pointing { cursor: pointer; }
+  .card { position: fixed; background: var(--card); border: 1px solid var(--line); border-radius: 16px; box-shadow: var(--shadow); }
+  #controls { top: 20px; left: 20px; width: 320px; max-height: calc(100vh - 40px); overflow: auto; padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+  h1 { font-size: 18px; font-weight: 700; margin: 0; letter-spacing: -.01em; }
+  .sub { font-size: 13px; color: var(--muted); margin-top: 4px; line-height: 1.45; }
+  .label { font-size: 12px; font-weight: 600; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; margin-bottom: 8px; }
+  .seg { display: flex; background: #f0ede6; border-radius: 10px; padding: 3px; }
+  .seg button { flex: 1; border: 0; background: transparent; padding: 8px 10px; border-radius: 8px; font: 500 13px Inter, sans-serif; color: var(--muted); cursor: pointer; transition: background .15s, color .15s; }
+  .seg button:hover { color: var(--ink); } .seg button.on { background: var(--card); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .note { font-size: 12px; color: var(--muted); margin-top: 8px; line-height: 1.45; }
+  .search { position: relative; }
+  .search input { width: 100%; border: 1px solid var(--line); background: #fbfaf7; border-radius: 10px; padding: 10px 12px; font: 14px Inter, sans-serif; color: var(--ink); outline: none; }
+  .search input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(79,70,229,.12); }
+  #results { position: absolute; top: 44px; left: 0; right: 0; background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: var(--shadow); overflow: hidden; display: none; z-index: 5; }
+  #results div { display: flex; gap: 10px; align-items: center; padding: 8px 12px; font-size: 13px; cursor: pointer; }
+  #results div:hover, #results div.active { background: #f3f1ec; }
+  #results img { width: 24px; height: 24px; border-radius: 50%; object-fit: cover; background: #eee; }
+  #results small { color: var(--muted); }
+  .pills { display: flex; flex-wrap: wrap; gap: 6px; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--line); background: #fbfaf7; border-radius: 999px; padding: 6px 10px; font: 500 12px Inter, sans-serif; color: var(--ink); cursor: pointer; transition: background .15s, border-color .15s; }
+  .pill:hover { background: #f3f1ec; } .pill.on { border-color: var(--accent); background: rgba(79,70,229,.06); }
+  .dot { width: 9px; height: 9px; border-radius: 50%; }
+  .actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .btn { border: 1px solid var(--line); background: #fbfaf7; border-radius: 8px; padding: 7px 10px; font: 500 12px Inter, sans-serif; color: var(--ink); cursor: pointer; transition: background .15s, border-color .15s; }
+  .btn:hover { background: #f3f1ec; } .btn.on { border-color: var(--accent); color: var(--accent); background: rgba(79,70,229,.06); }
+  .caveat { font-size: 12px; color: var(--muted); line-height: 1.45; border-top: 1px solid var(--line); padding-top: 12px; }
+  #panel { top: 20px; right: 20px; width: 360px; max-height: calc(100vh - 170px); overflow: auto; padding: 24px; display: none; }
+  #panel .close { position: absolute; top: 14px; right: 14px; border: 0; background: transparent; font-size: 20px; color: var(--muted); cursor: pointer; border-radius: 8px; width: 30px; height: 30px; }
+  #panel .close:hover { background: #f3f1ec; color: var(--ink); }
+  .back { border: 0; background: transparent; color: var(--accent); font: 500 12px Inter, sans-serif; cursor: pointer; padding: 0; margin-bottom: 10px; }
+  .who { display: flex; gap: 14px; align-items: center; }
+  .who img, .who .ph { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; flex: none; border: 3px solid var(--line); }
+  .ph { display: grid; place-items: center; font-weight: 700; color: #fff; }
+  .who .name { font-size: 17px; font-weight: 700; }
+  .who a { font-size: 13px; color: var(--accent); text-decoration: none; } .who a:hover { text-decoration: underline; }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin: 18px 0; }
+  .stat { background: #f7f5f0; border-radius: 12px; padding: 12px; }
+  .stat b { display: block; font-size: 22px; font-weight: 700; letter-spacing: -.01em; }
+  .stat span { font-size: 12px; color: var(--muted); }
+  .tags { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
+  .tag { font-size: 12px; font-weight: 500; padding: 4px 10px; border-radius: 999px; }
+  .bio { font-size: 13px; line-height: 1.5; color: #374151; margin: 0 0 16px; white-space: pre-line; }
+  .mix { display: flex; flex-direction: column; gap: 5px; margin-bottom: 16px; }
+  .mix div { display: grid; grid-template-columns: 76px 1fr 36px; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+  .mix i { display: block; height: 6px; border-radius: 3px; background: #ece9e1; overflow: hidden; }
+  .mix i b { display: block; height: 100%; border-radius: 3px; }
+  .friends { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .friends img, .friends .ph { width: 30px; height: 30px; border-radius: 50%; object-fit: cover; cursor: pointer; border: 2px solid transparent; font-size: 11px; }
+  .friends img:hover, .friends .ph:hover { border-color: var(--accent); }
+  .row { display: flex; gap: 10px; align-items: center; padding: 8px 6px; border-radius: 10px; cursor: pointer; }
+  .row:hover { background: #f3f1ec; }
+  .row img, .row .ph { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; flex: none; font-size: 12px; }
+  .row .t { flex: 1; min-width: 0; } .row .t b { display: block; font-size: 13px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .t span { display: block; font-size: 11.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row .n { font-size: 12px; color: var(--muted); text-align: right; flex: none; }
+  .hop { font-size: 10.5px; font-weight: 600; padding: 2px 6px; border-radius: 999px; background: #eef0f3; color: #4b5563; }
+  .hop.h1 { background: rgba(79,70,229,.12); color: var(--accent); } .hop.h2 { background: #fdf1e3; color: #b45309; }
+  .section { margin-top: 18px; } .section p { font-size: 12px; color: var(--muted); margin: 0 0 6px; line-height: 1.45; }
+  .chain { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 4px 2px; margin-top: 8px; }
+  .chain .hop { display: flex; align-items: flex-start; }
+  .chain .stop { display: flex; flex-direction: column; align-items: center; width: 64px; cursor: pointer; border-radius: 10px; padding: 4px 2px; }
+  .chain .stop:hover { background: #f3f1ec; }
+  .chain .stop img, .chain .stop .ph { width: 36px; height: 36px; border-radius: 50%; object-fit: cover; font-size: 12px; border: 2px solid var(--line); }
+  .chain .stop.me img, .chain .stop.me .ph { border-color: var(--accent); }
+  .chain .stop span { font-size: 10.5px; color: var(--muted); margin-top: 3px; max-width: 64px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .chain .arrow { display: flex; flex-direction: column; align-items: center; width: 34px; padding-top: 12px; color: var(--muted); font-size: 14px; line-height: 1; }
+  .chain .arrow small { font-size: 10px; margin-top: 2px; color: var(--muted); }
+  .chain .arrow.weak { color: #b91c1c; } .chain .arrow.weak small { color: #b91c1c; }
+  #tip { position: fixed; pointer-events: none; background: var(--ink); color: #fff; border-radius: 10px; padding: 8px 12px; font-size: 12px; line-height: 1.4; display: none; box-shadow: var(--shadow); z-index: 10; max-width: 260px; }
+  #tip b { font-size: 13px; } #tip span { color: #c7cad1; }
+  #zoom { bottom: 20px; right: 20px; display: flex; flex-direction: column; padding: 4px; border-radius: 12px; }
+  #zoom button { width: 36px; height: 36px; border: 0; background: transparent; font-size: 18px; color: var(--ink); cursor: pointer; border-radius: 8px; }
+  #zoom button:hover { background: #f3f1ec; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+
+<div id="controls" class="card">
+  <div>
+    <h1 id="title">X network map</h1>
+    <div class="sub" id="subtitle"></div>
+  </div>
+  <div>
+    <div class="label">Size people by</div>
+    <div class="seg" id="sizeSeg">
+      <button data-k="followers" class="on">Followers</button>
+      <button data-k="impressions">Views, 30 days</button>
+    </div>
+    <div class="note" id="sizeNote"></div>
+  </div>
+  <div class="search"><input id="q" placeholder="Find anyone to see your path…" autocomplete="off"><div id="results"></div></div>
+  <div>
+    <div class="label">Segments · click for your plan</div>
+    <div class="pills" id="topics"></div>
+  </div>
+  <div>
+    <div class="label">Highlight</div>
+    <div class="actions">
+      <button class="btn" id="btnMine">My direct ties</button>
+      <button class="btn" id="btnTwo">One intro away</button>
+    </div>
+  </div>
+  <div class="caveat" id="caveat"></div>
+</div>
+
+<div id="panel" class="card"></div>
+<div id="tip"></div>
+<div id="zoom" class="card">
+  <button id="zin" title="Zoom in">+</button>
+  <button id="zout" title="Zoom out">−</button>
+  <button id="zme" title="Center on me">◎</button>
+</div>
+
+<script>
+const DATA = /*__DATA__*/null;
+const TOPIC_COLOR = Object.assign({ "Other": "#a3a3a3" }, DATA.topicColors || {});
+const TOPIC_NAME = DATA.topicNames || {};
+const ACCENT = "#4f46e5";
+const fmt = n => n == null ? "—" : n >= 1e6 ? (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + "M" : n >= 1e3 ? (n / 1e3).toFixed(n >= 1e4 ? 0 : 1) + "K" : String(n);
+const pct = x => Math.round(x * 100) + "%";
+const initials = s => (s || "?").replace(/[^A-Za-z0-9 ]/g, "").split(/\s+/).filter(Boolean).slice(0, 2).map(w => w[0]).join("").toUpperCase() || "?";
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+// ---------- data ----------
+const nodes = DATA.nodes, byId = new Map(nodes.map(n => [n.id, n])), me = byId.get(DATA.me);
+nodes.forEach(n => { n.hx = n.x; n.hy = n.y; });
+const links = DATA.edges.map(([s, t, w]) => ({ source: s, target: t, weight: w }));
+const nbrs = new Map(nodes.map(n => [n.id, new Map()]));
+links.forEach(l => { nbrs.get(l.source).set(l.target, l.weight); nbrs.get(l.target).set(l.source, l.weight); });
+links.forEach(l => { l.source = byId.get(l.source); l.target = byId.get(l.target); });
+const THR = DATA.threshold || 1;
+
+// ---------- shortest path from me to anyone ----------
+// Real ties (strength >= THR) cost 1 step each, plus a little less for stronger ties.
+// Weak ties cost 10, so a path over real ties always wins when one exists.
+const idx = new Map(nodes.map((n, i) => [n.id, i]));
+function pathTo(target) {
+  if (target === me) return null;
+  const N = nodes.length, dist = new Float64Array(N).fill(Infinity), prev = new Int32Array(N).fill(-1), done = new Uint8Array(N);
+  dist[idx.get(me.id)] = 0;
+  for (let it = 0; it < N; it++) {
+    let u = -1, best = Infinity;
+    for (let i = 0; i < N; i++) if (!done[i] && dist[i] < best) { best = dist[i]; u = i; }
+    if (u < 0) break;
+    done[u] = 1;
+    if (nodes[u] === target) break;
+    for (const [vid, w] of nbrs.get(nodes[u].id)) {
+      const v = idx.get(vid), c = (w >= THR ? 1 : 10) + 1 / w;
+      if (dist[u] + c < dist[v]) { dist[v] = dist[u] + c; prev[v] = u; }
+    }
+  }
+  let i = idx.get(target.id);
+  if (!isFinite(dist[i])) return { nodes: [], weak: true, none: true };
+  const chain = [];
+  while (i >= 0) { chain.push(nodes[i].id); i = prev[i]; }
+  chain.reverse();
+  const weights = chain.slice(1).map((id, k) => nbrs.get(chain[k]).get(id));
+  return { nodes: chain, weights, weak: weights.some(w => w < THR), steps: chain.length - 1 };
+}
+let currentPath = null;
+const isMember = (n, t) => n.topic === t || (n.scores[t] || 0) >= 0.35;
+const withImpr = nodes.filter(n => n.impressions != null).length;
+const colorOf = n => TOPIC_COLOR[n.topic] || TOPIC_COLOR.Other;
+
+document.title = DATA.title;
+document.getElementById("title").textContent = DATA.title;
+document.getElementById("subtitle").textContent =
+  `${nodes.length.toLocaleString()} people and ${DATA.edges.length.toLocaleString()} ties from ${DATA.interactions.toLocaleString()} public replies, quotes, mentions and reposts${DATA.collected ? ", collected " + DATA.collected : ""}. Distance shows how closely people are tied: replies count, replies that get answered count most, and a one-way mention of a much larger account counts little. Color shows what each person talks about.`;
+document.getElementById("caveat").textContent =
+  `Ties between you and your ${nodes.filter(n => n.hops === 1).length} direct contacts are well covered. Ties among everyone else come from a sample of ${DATA.seeds} accounts' recent posts, so people who interact in real life can still sit apart here. Pulling more accounts' posts fills that in.`;
+
+nodes.forEach(n => {
+  if (!n.img) return;
+  const im = new Image(); im.referrerPolicy = "no-referrer";
+  im.onload = () => { n.image = im; draw(); }; im.src = n.img;
+});
+
+// ---------- sizing ----------
+let sizeKey = "followers";
+function radiusFor(n) {
+  const v = n[sizeKey];
+  let r;
+  if (v == null) r = 3.5;
+  else {
+    const vals = nodes.map(d => d[sizeKey]).filter(x => x != null && x > 0).sort(d3.ascending);
+    const lo = Math.log10(Math.max(1, d3.quantile(vals, 0.02))), hi = Math.log10(d3.max(vals));
+    const t = Math.max(0, Math.min(1, (Math.log10(Math.max(1, v)) - lo) / (hi - lo)));
+    r = 5 + Math.pow(t, 1.25) * 52;
+  }
+  return n === me ? Math.max(r, 48) : r;
+}
+function applySizes() {
+  nodes.forEach(n => n.r = radiusFor(n));
+  document.getElementById("sizeNote").textContent = sizeKey === "followers"
+    ? "Current follower counts from X."
+    : `Views on each person's posts and replies, last 30 days. ${withImpr} of ${nodes.length.toLocaleString()} people pulled so far; the rest are small dots until the pull finishes.`;
+}
+applySizes();
+
+// ---------- layout: positions come from the data; this pass only separates overlapping faces ----------
+me.fx = 0; me.fy = 0;
+const sim = d3.forceSimulation(nodes)
+  .force("x", d3.forceX(n => n.hx).strength(0.6))
+  .force("y", d3.forceY(n => n.hy).strength(0.6))
+  .force("collide", d3.forceCollide(n => n.r + 1.5).iterations(3))
+  .stop();
+for (let i = 0; i < 200; i++) sim.tick();
+sim.alpha(0.02).alphaDecay(0.05).on("tick", draw).restart();
+
+// ---------- canvas ----------
+const canvas = document.getElementById("c"), ctx = canvas.getContext("2d");
+let W, H, DPR, transform = d3.zoomIdentity;
+function resize() {
+  DPR = window.devicePixelRatio || 1; W = window.innerWidth; H = window.innerHeight;
+  canvas.width = W * DPR; canvas.height = H * DPR; canvas.style.width = W + "px"; canvas.style.height = H + "px";
+  draw();
+}
+
+// ---------- highlight state ----------
+let hover = null, selected = null, mode = null, segment = null; // mode: 'two' | 'mine'
+function focusSet() {
+  if (selected) return new Set([selected.id, ...nbrs.get(selected.id).keys(), ...(currentPath ? currentPath.nodes : [])]);
+  if (segment) return new Set(nodes.filter(n => isMember(n, segment)).map(n => n.id).concat([me.id]));
+  if (mode === "mine") return new Set([me.id, ...[...nbrs.get(me.id)].filter(([, w]) => w >= THR).map(([id]) => id)]);
+  if (mode === "two") return new Set(nodes.filter(n => n.hops <= 2).map(n => n.id));
+  return null;
+}
+
+function draw() {
+  if (!ctx) return;
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0); ctx.clearRect(0, 0, W, H);
+  ctx.save(); ctx.translate(transform.x, transform.y); ctx.scale(transform.k, transform.k);
+  const k = transform.k, focus = focusSet();
+  const pathEdges = selected && currentPath && !currentPath.none ? new Set(currentPath.nodes.slice(1).map((id, i) => currentPath.nodes[i] + "|" + id)) : null;
+
+  // edges: opacity follows tie strength; the path from me is drawn last and thick
+  const onPathList = [];
+  for (const l of links) {
+    const s = l.source, t = l.target;
+    const onPath = pathEdges && (pathEdges.has(s.id + "|" + t.id) || pathEdges.has(t.id + "|" + s.id));
+    if (onPath) { onPathList.push(l); continue; }
+    let on = false;
+    if (selected) on = s === selected || t === selected;
+    else if (focus) on = focus.has(s.id) && focus.has(t.id);
+    else if (hover) on = s === hover || t === hover;
+    const base = 0.04 + Math.min(0.3, l.weight * 0.025);
+    if (focus && !on) { ctx.strokeStyle = "rgba(31,35,40,.02)"; ctx.lineWidth = 0.6 / k; }
+    else if (on) { ctx.strokeStyle = `rgba(79,70,229,${selected || hover ? .5 : .25})`; ctx.lineWidth = Math.min(3, 0.6 + l.weight * 0.2) / k; }
+    else { ctx.strokeStyle = `rgba(31,35,40,${base})`; ctx.lineWidth = Math.min(2.2, 0.4 + l.weight * 0.15) / k; }
+    ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(t.x, t.y); ctx.stroke();
+  }
+  for (const l of onPathList) {
+    const weak = l.weight < THR;
+    ctx.strokeStyle = weak ? "#b91c1c" : ACCENT; ctx.lineWidth = 3.5 / k;
+    if (weak) ctx.setLineDash([7 / k, 6 / k]);
+    ctx.beginPath(); ctx.moveTo(l.source.x, l.source.y); ctx.lineTo(l.target.x, l.target.y); ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // nodes: small first, me last
+  const order = nodes.slice().sort((a, b) => (a === me) - (b === me) || a.r - b.r);
+  for (const n of order) {
+    const dim = focus && !focus.has(n.id), noData = n[sizeKey] == null;
+    ctx.globalAlpha = dim ? 0.1 : noData ? 0.45 : 1;
+    const r = n.r, color = colorOf(n), screenR = r * k;
+    if (screenR < 3 || noData) { ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, Math.PI * 2); ctx.fillStyle = color; ctx.fill(); }
+    else {
+      ctx.save(); ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, Math.PI * 2); ctx.closePath(); ctx.fillStyle = "#e9e5dc"; ctx.fill(); ctx.clip();
+      if (n.image) ctx.drawImage(n.image, n.x - r, n.y - r, r * 2, r * 2);
+      else if (screenR > 8) {
+        ctx.fillStyle = color; ctx.fillRect(n.x - r, n.y - r, r * 2, r * 2);
+        ctx.fillStyle = "#fff"; ctx.font = `600 ${r * 0.75}px Inter, sans-serif`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+        ctx.fillText(initials(n.name), n.x, n.y + r * 0.03);
+      }
+      ctx.restore();
+      ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
+      ctx.strokeStyle = n === me ? ACCENT : color; ctx.lineWidth = n === me ? Math.max(5, r * 0.12) : Math.max(1.5 / k, r * 0.09); ctx.stroke();
+    }
+    if (n === hover || n === selected) { ctx.beginPath(); ctx.arc(n.x, n.y, r + 4 / k, 0, Math.PI * 2); ctx.strokeStyle = ACCENT; ctx.lineWidth = 2.5 / k; ctx.stroke(); }
+  }
+  ctx.globalAlpha = 1;
+
+  // handles
+  ctx.textAlign = "center"; ctx.textBaseline = "top";
+  const pathNodes = pathEdges ? new Set(currentPath.nodes) : null;
+  for (const n of order) {
+    if (n === me) continue;
+    const inFocus = focus && focus.has(n.id);
+    // with a path shown, label the stops on it and keep neighbours quiet unless they are big
+    const show = n === hover || n === selected || (pathNodes ? pathNodes.has(n.id) || (inFocus && n.r * k > 26)
+      : (inFocus && n.r * k > 9) || (!focus && n.r * k > 18 && n[sizeKey] != null));
+    if (!show) continue;
+    const fs = 11.5 / k; ctx.font = `500 ${fs}px Inter, sans-serif`;
+    const txt = "@" + n.id, tw = ctx.measureText(txt).width, y = n.y + n.r + 5 / k;
+    ctx.fillStyle = "rgba(255,254,251,.9)"; roundRect(n.x - tw / 2 - 5 / k, y - 2 / k, tw + 10 / k, fs + 6 / k, 6 / k); ctx.fill();
+    ctx.fillStyle = "#1f2328"; ctx.fillText(txt, n.x, y + 1 / k);
+  }
+  // "You"
+  const fs = 13 / k; ctx.font = `700 ${fs}px Inter, sans-serif`;
+  const tw = ctx.measureText("You").width, by = me.y + me.r + 8 / k;
+  ctx.fillStyle = ACCENT; roundRect(me.x - tw / 2 - 10 / k, by, tw + 20 / k, fs + 10 / k, 999); ctx.fill();
+  ctx.fillStyle = "#fff"; ctx.fillText("You", me.x, by + 5 / k);
+  ctx.restore();
+}
+function roundRect(x, y, w, h, r) {
+  r = Math.min(r, h / 2, w / 2);
+  ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
+}
+
+// ---------- interaction ----------
+const zoom = d3.zoom().scaleExtent([0.05, 8])
+  .on("start", e => e.sourceEvent?.type === "mousedown" && canvas.classList.add("dragging"))
+  .on("end", () => canvas.classList.remove("dragging"))
+  .on("zoom", e => { transform = e.transform; draw(); });
+d3.select(canvas).call(zoom).on("dblclick.zoom", null);
+
+function nodeAt(px, py) {
+  const [x, y] = transform.invert([px, py]);
+  let best = null;
+  for (const n of nodes) {
+    const hitR = Math.max(n.r, 6 / transform.k), d = (n.x - x) ** 2 + (n.y - y) ** 2;
+    if (d <= hitR * hitR && (!best || n.r < best.r || n === me)) best = n;
+  }
+  return best;
+}
+const tip = document.getElementById("tip");
+const hopText = n => n === me ? "You" : n.hops === 1 ? "You interact directly" : n.hops === 2 ? `One intro away, via @${n.via[0] || "?"}` : n.hops >= 9 ? "No close path yet" : `${n.hops} steps from you`;
+// who answers people: distinct accounts they replied to in their sampled posts
+const answers = n => !n.dir || !n.dir.known ? null : n.dir.out_targets;
+const answersText = n => { const a = answers(n); return a == null ? "No reply data yet" : a === 0 ? "Replied to nobody in sampled posts" : `Replied to ${a} ${a === 1 ? "person" : "different people"}`; };
+const answersColor = n => { const a = answers(n); return a == null ? "#9ca3af" : a >= 15 ? "#2f855a" : a >= 5 ? "#b45309" : "#b91c1c"; };
+canvas.addEventListener("mousemove", e => {
+  const n = nodeAt(e.clientX, e.clientY);
+  if (n !== hover) { hover = n; draw(); }
+  canvas.classList.toggle("pointing", !!n);
+  if (n) {
+    tip.style.display = "block"; tip.style.left = Math.min(e.clientX + 14, W - 270) + "px"; tip.style.top = (e.clientY + 14) + "px";
+    tip.innerHTML = `<b>${esc(n.name)}</b> <span>@${esc(n.id)}</span><br>${fmt(n.followers)} followers` +
+      (n.impressions != null ? ` · ${n.estimated ? "~" : ""}${fmt(n.impressions)} views (30d)` : "") + `<br><span>${esc(hopText(n))}</span>`;
+  } else tip.style.display = "none";
+});
+canvas.addEventListener("mouseleave", () => { hover = null; tip.style.display = "none"; draw(); });
+canvas.addEventListener("click", e => select(nodeAt(e.clientX, e.clientY)));
+
+function avatar(n, cls = "") {
+  return n.img ? `<img src="${esc(n.img)}" referrerpolicy="no-referrer" data-id="${esc(n.id)}" title="@${esc(n.id)}" class="${cls}">`
+    : `<div class="ph ${cls}" data-id="${esc(n.id)}" title="@${esc(n.id)}" style="background:${colorOf(n)}">${esc(initials(n.name))}</div>`;
+}
+const hopBadge = n => n === me ? "" : `<span class="hop ${n.hops === 1 ? "h1" : n.hops === 2 ? "h2" : ""}">${n.hops === 1 ? "direct" : n.hops === 2 ? "1 intro" : n.hops >= 9 ? "far" : n.hops + " steps"}</span>`;
+function personRow(n, right) {
+  const a = answers(n);
+  const ans = a == null ? "" : ` · <span style="color:${answersColor(n)}">answers ${a}</span>`;
+  return `<div class="row" data-id="${esc(n.id)}">${avatar(n)}<div class="t"><b>${esc(n.name)} ${hopBadge(n)}</b><span>${esc(right.sub)}${ans}</span></div><div class="n">${esc(right.n)}</div></div>`;
+}
+
+const panel = document.getElementById("panel");
+let fromSegment = null;
+function wirePanel() {
+  panel.querySelector(".close").onclick = () => { select(null); setSegment(null); };
+  panel.querySelectorAll("[data-id]").forEach(el => el.onclick = ev => { ev.stopPropagation(); select(byId.get(el.dataset.id), true); });
+  const b = panel.querySelector(".back"); if (b) b.onclick = () => { selected = null; showSegment(fromSegment); };
+}
+
+function pathSection(n) {
+  const p = currentPath;
+  if (!p) return "";
+  if (p.none) return `<div class="section"><div class="label">Path from you</div><p>No path in this data.</p></div>`;
+  const desc = p.steps === 1 ? `You interact directly (tie strength ${p.weights[0].toFixed(1)}).`
+    : p.weak ? `No path over real ties. The nearest route has ${p.weights.filter(w => w < THR).length} weak link${p.weights.filter(w => w < THR).length === 1 ? "" : "s"} (dashed red), usually a one-way mention or a reply to a much bigger account.`
+    : `${p.steps} steps over real ties. Each stop can introduce you to the next.`;
+  const chain = p.nodes.map((id, i) => {
+    const s = byId.get(id);
+    const stop = `<div class="stop ${s === me ? "me" : ""}" data-id="${esc(id)}">${avatar(s)}<span>${s === me ? "You" : "@" + esc(id)}</span></div>`;
+    if (i === 0) return stop;
+    const w = p.weights[i - 1];
+    // arrow and the next stop wrap together, so a row never ends on a dangling arrow
+    return `<div class="hop"><div class="arrow ${w < THR ? "weak" : ""}">→<small>${w < THR ? "weak" : w.toFixed(1)}</small></div>${stop}</div>`;
+  }).join("");
+  return `<div class="section"><div class="label">Path from you</div><p>${desc}</p><div class="chain">${chain}</div></div>`;
+}
+
+function select(n, fly) {
+  selected = n;
+  currentPath = n && n !== me ? pathTo(n) : null;
+  if (!n) { if (segment) showSegment(segment); else panel.style.display = "none"; draw(); return; }
+  fromSegment = segment;
+  const friends = [...nbrs.get(n.id).keys()].map(id => byId.get(id)).sort((a, b) => (b.followers || 0) - (a.followers || 0));
+  const color = colorOf(n);
+  const mix = DATA.topics.map(t => `<div><span>${esc(TOPIC_NAME[t])}</span><i><b style="width:${pct(n.scores[t] || 0)};background:${TOPIC_COLOR[t]}"></b></i><span>${pct(n.scores[t] || 0)}</span></div>`).join("");
+  const segLine = DATA.topics.filter(t => n.seg[t].deg > 0).map(t => `talks to ${n.seg[t].deg} ${TOPIC_NAME[t].split(" ")[0]} ${n.seg[t].deg === 1 ? "person" : "people"}`).join(" · ");
+  panel.innerHTML = `
+    <button class="close" aria-label="Close">×</button>
+    ${fromSegment ? `<button class="back">← ${esc(TOPIC_NAME[fromSegment])} plan</button>` : ""}
+    <div class="who">${avatar(n)}<div><div class="name">${esc(n.name)}</div>
+      <a href="https://x.com/${encodeURIComponent(n.id)}" target="_blank" rel="noopener">@${esc(n.id)} ↗</a></div></div>
+    <div class="stats">
+      <div class="stat"><b>${fmt(n.followers)}</b><span>Followers</span></div>
+      <div class="stat"><b>${n.impressions != null && n.estimated ? "~" : ""}${fmt(n.impressions)}</b><span>${n.impressions != null ? `Views, last 30 days (${n.posts} posts${n.estimated ? ", est." : ""})` : "Views, 30 days (not pulled yet)"}</span></div>
+    </div>
+    <div class="tags">
+      <span class="tag" style="background:${color}22;color:${d3.hsl(color).darker(1).formatHex()}">${esc(TOPIC_NAME[n.topic] || n.topic)}</span>
+      <span class="tag" style="background:#eef0f3;color:#4b5563">${esc(hopText(n))}</span>
+      <span class="tag" style="background:${answersColor(n)}1a;color:${answersColor(n)}" title="How many different accounts they replied to in the posts we sampled">${esc(answersText(n))}</span>
+    </div>
+    ${pathSection(n)}
+    <div class="section"><div class="label">What they talk about</div><div class="mix">${mix}</div></div>
+    ${n.bio ? `<p class="bio">${esc(n.bio)}</p>` : ""}
+    ${segLine ? `<p class="bio" style="color:var(--muted)">${esc(segLine)}</p>` : ""}
+    <div class="label">Connected to ${friends.length}</div>
+    <div class="friends">${friends.slice(0, 60).map(f => avatar(f)).join("")}</div>`;
+  panel.style.display = "block"; wirePanel();
+  if (fly) { if (currentPath && !currentPath.none) fitTo(currentPath.nodes.map(id => byId.get(id)), 260); else flyTo(n); }
+  draw();
+}
+
+function showSegment(t) {
+  const S = DATA.summary[t];
+  const rows = (ids, f) => ids.map(id => byId.get(id)).filter(Boolean).map(n => personRow(n, f(n))).join("") || `<p>None yet.</p>`;
+  panel.innerHTML = `
+    <button class="close" aria-label="Close">×</button>
+    <div class="name" style="font-size:17px;font-weight:700;display:flex;align-items:center;gap:8px"><span class="dot" style="background:${TOPIC_COLOR[t]};width:12px;height:12px"></span>${esc(TOPIC_NAME[t])}</div>
+    <div class="stats">
+      <div class="stat"><b>${S.direct}</b><span>of ${S.members} you talk to directly</span></div>
+      <div class="stat"><b>${S.two_hop}</b><span>one intro away</span></div>
+      <div class="stat"><b>${pct(S.share_of_my_weight)}</b><span>of your interactions</span></div>
+      <div class="stat"><b>${S.members - S.direct - S.two_hop}</b><span>three or more steps</span></div>
+    </div>
+    <div class="section"><div class="label">Bridges you already have</div>
+      <p>Your direct ties who talk to the most people here. Replying in their threads puts you in front of this segment.</p>
+      ${rows(S.bridges, n => ({ sub: `talks to ${n.seg[t].deg} here`, n: fmt(n.followers) + " fol." }))}</div>
+    <div class="section"><div class="label">Doors, one intro away</div>
+      <p>Not yet in contact, but a direct tie of yours is. Hover a name to see who.</p>
+      ${rows(S.doors, n => ({ sub: `via @${n.via[0] || "?"}${n.via.length > 1 ? " +" + (n.via.length - 1) : ""}`, n: fmt(n.followers) + " fol." }))}</div>
+    <div class="section"><div class="label">Most influential here</div>
+      <p>Ranked by how many people in this segment interact with them and by audience size. "Answers" is how many different people they replied to in their sampled posts; green means they talk back.</p>
+      ${rows(S.hubs, n => ({ sub: `${n.seg[t].deg} here talk to them`, n: fmt(n.followers) + " fol." }))}</div>`;
+  panel.style.display = "block"; wirePanel(); draw();
+}
+function setSegment(t) {
+  segment = t; selected = null;
+  document.querySelectorAll("#topics .pill").forEach(p => p.classList.toggle("on", p.dataset.t === t));
+  if (!t) { panel.style.display = "none"; draw(); return; }
+  mode = null; Object.values(modeBtns).forEach(id => document.getElementById(id).classList.remove("on"));
+  showSegment(t);
+  fitTo(nodes.filter(n => isMember(n, t)));
+}
+function flyTo(n, k = Math.max(transform.k, 1.4)) {
+  d3.select(canvas).transition().duration(650).call(zoom.transform, d3.zoomIdentity.translate((W + 340 - 360) / 2 - n.x * k, H / 2 - n.y * k).scale(k));
+}
+function fitTo(list, pad = 160) {
+  const [x0, x1] = d3.extent(list, d => d.x), [y0, y1] = d3.extent(list, d => d.y);
+  const availW = W - 760, k = Math.max(0.05, Math.min(2.5, Math.min(availW / (x1 - x0 + pad), H / (y1 - y0 + pad))));
+  d3.select(canvas).transition().duration(650).call(zoom.transform, d3.zoomIdentity.translate(360 + availW / 2 - ((x0 + x1) / 2) * k, H / 2 - ((y0 + y1) / 2) * k).scale(k));
+}
+
+// size toggle
+document.querySelectorAll("#sizeSeg button").forEach(b => b.onclick = () => {
+  document.querySelectorAll("#sizeSeg button").forEach(x => x.classList.toggle("on", x === b));
+  sizeKey = b.dataset.k; applySizes();
+  sim.force("collide").radius(n => n.r + 1.5); sim.alpha(0.5).alphaDecay(0.04).restart();
+  if (selected) select(selected);
+});
+
+// segment pills
+const topicsEl = document.getElementById("topics");
+DATA.topics.forEach(t => {
+  const b = document.createElement("button"); b.className = "pill"; b.dataset.t = t;
+  b.innerHTML = `<span class="dot" style="background:${TOPIC_COLOR[t]}"></span>${esc(TOPIC_NAME[t])} <span style="color:var(--muted)">${nodes.filter(n => isMember(n, t)).length}</span>`;
+  b.onclick = () => setSegment(segment === t ? null : t);
+  topicsEl.appendChild(b);
+});
+
+// highlight modes
+const modeBtns = { two: "btnTwo", mine: "btnMine" };
+Object.entries(modeBtns).forEach(([m, id]) => document.getElementById(id).onclick = () => {
+  mode = mode === m ? null : m; selected = null; segment = null; panel.style.display = "none";
+  document.querySelectorAll("#topics .pill").forEach(p => p.classList.remove("on"));
+  Object.entries(modeBtns).forEach(([mm, ii]) => document.getElementById(ii).classList.toggle("on", mode === mm));
+  if (mode) fitTo([...focusSet()].map(id => byId.get(id)).filter(Boolean));
+  draw();
+});
+
+// search
+const q = document.getElementById("q"), results = document.getElementById("results");
+let hits = [], hitIdx = 0;
+function renderHits() {
+  results.innerHTML = hits.map((n, i) => `<div data-id="${esc(n.id)}" class="${i === hitIdx ? "active" : ""}">${avatar(n)}<span>${esc(n.name)} <small>@${esc(n.id)}</small></span></div>`).join("");
+  results.style.display = hits.length ? "block" : "none";
+  results.querySelectorAll("div[data-id]").forEach(el => el.onmousedown = () => pick(byId.get(el.dataset.id)));
+}
+function pick(n) { q.value = ""; hits = []; renderHits(); q.blur(); select(n, true); }
+q.addEventListener("input", () => {
+  const s = q.value.trim().toLowerCase().replace(/^@/, "");
+  hits = s ? nodes.filter(n => n.id.toLowerCase().includes(s) || (n.name || "").toLowerCase().includes(s)).sort((a, b) => (b.followers || 0) - (a.followers || 0)).slice(0, 7) : [];
+  hitIdx = 0; renderHits();
+});
+q.addEventListener("keydown", e => {
+  if (e.key === "ArrowDown") { hitIdx = Math.min(hits.length - 1, hitIdx + 1); renderHits(); e.preventDefault(); }
+  if (e.key === "ArrowUp") { hitIdx = Math.max(0, hitIdx - 1); renderHits(); e.preventDefault(); }
+  if (e.key === "Enter" && hits[hitIdx]) pick(hits[hitIdx]);
+  if (e.key === "Escape") { hits = []; renderHits(); q.blur(); }
+});
+q.addEventListener("blur", () => setTimeout(() => results.style.display = "none", 150));
+window.addEventListener("keydown", e => { if (e.key === "Escape" && document.activeElement !== q) { select(null); } });
+
+// zoom buttons
+document.getElementById("zin").onclick = () => d3.select(canvas).transition().duration(250).call(zoom.scaleBy, 1.5);
+document.getElementById("zout").onclick = () => d3.select(canvas).transition().duration(250).call(zoom.scaleBy, 1 / 1.5);
+function fitAll() {
+  const ext = d3.max(nodes, n => Math.max(Math.abs(n.x) * H / (W - 380), Math.abs(n.y))) + 120;
+  const k = H / (2 * ext);
+  return d3.zoomIdentity.translate(360 + (W - 360) / 2, H / 2).scale(k);
+}
+document.getElementById("zme").onclick = () => d3.select(canvas).transition().duration(650).call(zoom.transform, fitAll());
+
+window.addEventListener("resize", resize);
+resize();
+d3.select(canvas).call(zoom.transform, fitAll());
+</script>
+</body>
+</html>

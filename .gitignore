@@ -1,0 +1,7 @@
+# your pull stays local; the repo ships the tool, not anyone's network
+data/*.json
+cache/
+site/index.html
+.venv/
+__pycache__/
+.DS_Store
